@@ -1,0 +1,38 @@
+name: Bootstrap source
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore verified source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .bootstrap/source.part01.b64
+          cat .bootstrap/source.part*.b64 | base64 --decode > /tmp/redmanager-source.zip
+          echo "97b00e4bcf8cbd8d8031694e15708b9f0c090806e6299aafeb2c3f4aebc0bf35  /tmp/redmanager-source.zip" | sha256sum -c -
+          unzip -qo /tmp/redmanager-source.zip -d .
+          rm -rf .bootstrap
+          rm -f .github/workflows/bootstrap-source.yml
+
+      - name: Commit imported source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import Crazy_Batto RedManager source"
+          git push
