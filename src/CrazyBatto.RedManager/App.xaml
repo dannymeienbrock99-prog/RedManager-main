@@ -1,0 +1,91 @@
+<Application x:Class="CrazyBatto.RedManager.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="WindowBackground" Color="#0B0F14" />
+        <SolidColorBrush x:Key="PanelBackground" Color="#121922" />
+        <SolidColorBrush x:Key="PanelBorder" Color="#253242" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#E33B55" />
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#F05269" />
+        <SolidColorBrush x:Key="PrimaryText" Color="#F4F7FA" />
+        <SolidColorBrush x:Key="SecondaryText" Color="#AAB6C5" />
+
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Border" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryText}" />
+            <Setter Property="Background" Value="#0E141C" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="CaretBrush" Value="White" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Margin" Value="4" />
+        </Style>
+
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryText}" />
+            <Setter Property="Background" Value="#17212D" />
+            <Setter Property="Padding" Value="18,9" />
+            <Setter Property="Margin" Value="0,0,3,0" />
+        </Style>
+
+        <Style TargetType="DataGrid">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryText}" />
+            <Setter Property="Background" Value="#0E141C" />
+            <Setter Property="RowBackground" Value="#101720" />
+            <Setter Property="AlternatingRowBackground" Value="#131C27" />
+            <Setter Property="BorderBrush" Value="{StaticResource PanelBorder}" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#263343" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="SelectionUnit" Value="FullRow" />
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#1B2634" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="BorderBrush" Value="#2B3A4D" />
+        </Style>
+    </Application.Resources>
+</Application>
