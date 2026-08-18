@@ -9,10 +9,17 @@ internal sealed class DeathCounterSettings
     public bool CountKnockdowns { get; set; } = false;
     public bool ShowOfflinePlayers { get; set; } = false;
     public bool UseLifetimeDeaths { get; set; } = false;
-    public int ScanIntervalMilliseconds { get; set; } = 1000;
-    public int WorldScanIntervalMilliseconds { get; set; } = 2500;
-    public bool EnableRuntimeHooks { get; set; } = true;
-    public bool WriteDiscoveryDiagnostics { get; set; } = true;
+
+    /// <summary>
+    /// Safe Mode deliberately disables the two operations most likely to destabilize
+    /// an IL2CPP game: broad Harmony patching and scanning every MonoBehaviour.
+    /// Existing settings files are migrated to Safe Mode automatically.
+    /// </summary>
+    public bool SafeMode { get; set; } = true;
+    public int ScanIntervalMilliseconds { get; set; } = 2500;
+    public int WorldScanIntervalMilliseconds { get; set; } = 15000;
+    public bool EnableRuntimeHooks { get; set; } = false;
+    public bool WriteDiscoveryDiagnostics { get; set; } = false;
 
     public static DeathCounterSettings LoadOrCreate(string filePath, Action<string> log)
     {
@@ -27,6 +34,9 @@ internal sealed class DeathCounterSettings
                 if (loaded is not null)
                 {
                     loaded.Normalize();
+                    // Persist the migration so an old settings.json cannot re-enable
+                    // unsafe scanning or Harmony hooks on the next game start.
+                    loaded.Save(filePath, log);
                     return loaded;
                 }
             }
@@ -45,8 +55,16 @@ internal sealed class DeathCounterSettings
     private void Normalize()
     {
         OverlayPort = Math.Clamp(OverlayPort, 1024, 65535);
-        ScanIntervalMilliseconds = Math.Clamp(ScanIntervalMilliseconds, 250, 10000);
-        WorldScanIntervalMilliseconds = Math.Clamp(WorldScanIntervalMilliseconds, 1000, 15000);
+        ScanIntervalMilliseconds = Math.Clamp(ScanIntervalMilliseconds, 500, 15000);
+        WorldScanIntervalMilliseconds = Math.Clamp(WorldScanIntervalMilliseconds, 5000, 60000);
+
+        if (SafeMode)
+        {
+            EnableRuntimeHooks = false;
+            WriteDiscoveryDiagnostics = false;
+            ScanIntervalMilliseconds = Math.Max(ScanIntervalMilliseconds, 2500);
+            WorldScanIntervalMilliseconds = Math.Max(WorldScanIntervalMilliseconds, 15000);
+        }
     }
 
     private void Save(string filePath, Action<string> log)
@@ -59,7 +77,7 @@ internal sealed class DeathCounterSettings
         }
         catch (Exception ex)
         {
-            log($"Standardeinstellungen konnten nicht gespeichert werden: {ex.Message}");
+            log($"Einstellungen konnten nicht gespeichert werden: {ex.Message}");
         }
     }
 }
