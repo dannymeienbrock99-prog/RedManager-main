@@ -1,6 +1,6 @@
 [package]
 name = "crazybatto-redmanager"
-version = "1.2.0"
+version = "1.2.1"
 description = "Sons of the Forest RedLoader installer, mod manager, and CrazyBatto tools."
 authors = ["Crazy_Batto", "Toni Macaroni (upstream RedManager)"]
 license = "Apache-2.0"
