@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "modVersion": "0.3.3",
+  "safeMode": true,
+  "sourceCommit": "37062c78ca14c44d73a861fc30ae5c95bfaf5454",
+  "generatedAtUtc": "2026-08-18T06:36:06.7214082Z",
+  "installer": "CrazyBatto_SOTF_DeathCounter_0.3.3_SafeMode_Setup.exe",
+  "readyZip": "CrazyBatto_SOTF_DeathCounter_0.3.3_SafeMode_READY.zip"
+}

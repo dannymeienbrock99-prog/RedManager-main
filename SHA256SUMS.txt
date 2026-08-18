@@ -1,0 +1,2 @@
+b3f59006065fe5473b71d02fab7dbb125feaa7f984b383e2ccb27bb2cf1a10e0  CrazyBatto_SOTF_DeathCounter_0.3.3_SafeMode_READY.zip
+44341a766dbcf50b376b03af76e61b37e2250c46930af47f7a2679a2fb9ef7f9  CrazyBatto_SOTF_DeathCounter_0.3.3_SafeMode_Setup.exe
