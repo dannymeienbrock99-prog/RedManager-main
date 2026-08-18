@@ -114,7 +114,7 @@ jobs:
             Invoke-BuildStage 'Svelte and TypeScript check' 'npm.cmd' @('run', 'check')
           }
           if ($success) {
-            Invoke-BuildStage 'Rust unit tests' 'cargo.exe' @('test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked')
+            Invoke-BuildStage 'Rust unit tests' 'cargo.exe' @('test', '--manifest-path', 'src-tauri/Cargo.toml')
           }
           if ($success) {
             Invoke-BuildStage 'Build Tauri Windows bundles' 'npm.cmd' @('run', 'tauri', '--', 'build')
@@ -163,7 +163,6 @@ jobs:
           "success=$($success.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-BuildLog "FINAL RESULT: $(if ($success) { 'SUCCESS' } else { 'FAILED' })"
 
-          # The workflow publishes diagnostics in the next step and fails only afterwards.
           exit 0
 
       - name: Upload build package and diagnostics
