@@ -21,7 +21,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download and inspect RedLoader 0.8.6
-        shell: powershell
+        id: inspect
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $work = Join-Path $env:RUNNER_TEMP 'redloader-release-inspection'
@@ -30,36 +31,51 @@ jobs:
 
           $zip = Join-Path $work 'Redloader.zip'
           $extract = Join-Path $work 'extracted'
-          Invoke-WebRequest `
-            -Uri 'https://github.com/ToniMacaroni/RedLoader/releases/download/0.8.6/Redloader.zip' `
-            -OutFile $zip `
-            -UseBasicParsing
-          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
-
           $report = Join-Path $work 'redloader-files.txt'
-          "Official RedLoader release inspection" | Set-Content -LiteralPath $report -Encoding utf8
-          "Downloaded: $(Get-Date -AsUTC -Format o)" | Add-Content -LiteralPath $report -Encoding utf8
-          "Archive SHA256: $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())" | Add-Content -LiteralPath $report -Encoding utf8
-          "" | Add-Content -LiteralPath $report -Encoding utf8
-          Get-ChildItem -LiteralPath $extract -Recurse -File |
-            Sort-Object FullName |
-            ForEach-Object {
-              $relative = $_.FullName.Substring($extract.Length).TrimStart('\')
-              "$relative`t$($_.Length)" | Add-Content -LiteralPath $report -Encoding utf8
-            }
+
+          try {
+            Invoke-WebRequest `
+              -Uri 'https://github.com/ToniMacaroni/RedLoader/releases/download/0.8.6/Redloader.zip' `
+              -OutFile $zip
+            Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+
+            "Official RedLoader release inspection" | Set-Content -LiteralPath $report -Encoding utf8
+            "Success: true" | Add-Content -LiteralPath $report -Encoding utf8
+            "Downloaded: $([DateTime]::UtcNow.ToString('o'))" | Add-Content -LiteralPath $report -Encoding utf8
+            "Archive SHA256: $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())" | Add-Content -LiteralPath $report -Encoding utf8
+            "" | Add-Content -LiteralPath $report -Encoding utf8
+            Get-ChildItem -LiteralPath $extract -Recurse -File |
+              Sort-Object FullName |
+              ForEach-Object {
+                $relative = $_.FullName.Substring($extract.Length).TrimStart('\')
+                "$relative`t$($_.Length)" | Add-Content -LiteralPath $report -Encoding utf8
+              }
+          }
+          catch {
+            "Official RedLoader release inspection" | Set-Content -LiteralPath $report -Encoding utf8
+            "Success: false" | Add-Content -LiteralPath $report -Encoding utf8
+            "Error: $($_.Exception.Message)" | Add-Content -LiteralPath $report -Encoding utf8
+          }
 
           Copy-Item -LiteralPath $report -Destination (Join-Path $env:GITHUB_WORKSPACE 'redloader-files.txt') -Force
 
       - name: Publish inspection branch
-        shell: powershell
+        if: always()
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $sourceReport = Join-Path $env:GITHUB_WORKSPACE 'redloader-files.txt'
+          if (-not (Test-Path $sourceReport)) {
+            "Official RedLoader release inspection`nSuccess: false`nError: inspection step did not create a report" |
+              Set-Content -LiteralPath $sourceReport -Encoding utf8
+          }
+
           $publish = Join-Path $env:RUNNER_TEMP 'redloader-inspection-publish'
           if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
           New-Item -ItemType Directory -Path $publish -Force | Out-Null
-          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'redloader-files.txt') -Destination $publish
+          Copy-Item -LiteralPath $sourceReport -Destination $publish
           Set-Content -LiteralPath (Join-Path $publish 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
           Set-Content -LiteralPath (Join-Path $publish 'source-commit.txt') -Value $env:GITHUB_SHA -Encoding ascii
 
