@@ -3,7 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>CrazyBatto.SotfDeathCounter</AssemblyName>
     <RootNamespace>CrazyBatto.SotfDeathCounter</RootNamespace>
-    <Version>0.3.2</Version>
+    <Version>0.3.3</Version>
     <LangVersion>10.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -16,11 +16,9 @@
   </PropertyGroup>
 
   <!--
-    The mod uses RedLoader/SonsSdk directly and accesses game-specific player
-    objects through reflection. Referencing every generated Sons/bolt assembly
-    made the build fail unnecessarily when RedLoader's interop generation was
-    incomplete. Unity API references may come from either Game or RedLoader's
-    official unity-libs fallback.
+    Safe Mode uses RedLoader/SonsSdk directly and only conservative field-based
+    discovery. The legacy compatibility scanner remains compiled but is disabled
+    unless a user explicitly turns SafeMode off in settings.json.
   -->
   <ItemGroup>
     <Reference Include="RedLoader">
