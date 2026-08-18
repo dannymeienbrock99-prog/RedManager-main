@@ -4,14 +4,14 @@ namespace CrazyBatto.SotfDeathCounter.RedLoader;
 
 /// <summary>
 /// Thin game adapter intended to be owned by an existing RedLoader/SonsMod project.
-/// It automatically discovers host and teammates and forwards lifecycle data to the core.
-/// It is deliberately not a SonsMod entry point.
+/// Safe Mode is the default and avoids broad IL2CPP object scans and dynamic patches.
 /// </summary>
 public sealed class SotfDeathCounterAdapter : IDisposable
 {
     private readonly DeathCounterModule _counter;
     private readonly SotfAdapterOptions _options;
-    private readonly AutomaticPlayerDiscovery _discovery;
+    private readonly AutomaticPlayerDiscovery? _discovery;
+    private readonly SafePlayerDiscovery? _safeDiscovery;
     private readonly RuntimeHookInstaller? _hooks;
     private readonly Action<string> _log;
     private DateTime _nextScanUtc = DateTime.MinValue;
@@ -37,14 +37,22 @@ public sealed class SotfDeathCounterAdapter : IDisposable
         }
 
         Directory.CreateDirectory(diagnosticsDirectory);
-        _discovery = new AutomaticPlayerDiscovery(
-            _options,
-            Path.Combine(diagnosticsDirectory, "last-discovery.json"),
-            _log);
 
-        if (_options.EnableRuntimeHooks)
+        if (_options.SafeMode)
         {
-            _hooks = new RuntimeHookInstaller(_discovery, OnHookSignal, _log);
+            _safeDiscovery = new SafePlayerDiscovery(_log);
+        }
+        else
+        {
+            _discovery = new AutomaticPlayerDiscovery(
+                _options,
+                Path.Combine(diagnosticsDirectory, "last-discovery.json"),
+                _log);
+
+            if (_options.EnableRuntimeHooks)
+            {
+                _hooks = new RuntimeHookInstaller(_discovery, OnHookSignal, _log);
+            }
         }
     }
 
@@ -58,7 +66,14 @@ public sealed class SotfDeathCounterAdapter : IDisposable
         }
 
         _started = true;
-        InstallHooksIfRequired();
+        if (_options.SafeMode)
+        {
+            _log("SOTF Death Counter Safe Mode aktiv: keine Harmony-Patches und kein Vollscan aller Spielobjekte.");
+        }
+        else
+        {
+            InstallHooksIfRequired();
+        }
     }
 
     public void BeginSession(string? sessionId = null)
@@ -87,12 +102,27 @@ public sealed class SotfDeathCounterAdapter : IDisposable
         _nextScanUtc = nowUtc.AddMilliseconds(_options.ScanIntervalMilliseconds);
         try
         {
-            var players = _discovery.Scan(nowUtc);
+            IReadOnlyList<PlayerObservation> players;
+            if (_safeDiscovery is not null)
+            {
+                players = _safeDiscovery.Scan(nowUtc);
+            }
+            else if (_discovery is not null)
+            {
+                players = _discovery.Scan(nowUtc);
+            }
+            else
+            {
+                players = Array.Empty<PlayerObservation>();
+            }
+
             _counter.ApplyObservations(players, nowUtc);
         }
         catch (Exception ex)
         {
             _log($"Automatische Spielererfassung fehlgeschlagen: {ex.Message}");
+            // Back off after an error instead of retrying every frame.
+            _nextScanUtc = nowUtc.AddSeconds(15);
         }
     }
 
