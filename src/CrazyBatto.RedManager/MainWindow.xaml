@@ -1,0 +1,242 @@
+<Window x:Class="CrazyBatto.RedManager.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Crazy_Batto RedManager – Sons of the Forest"
+        Width="1320"
+        Height="840"
+        MinWidth="1080"
+        MinHeight="680"
+        Background="{StaticResource WindowBackground}"
+        Foreground="{StaticResource PrimaryText}"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="16"
+                Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,24,0">
+                    <TextBlock Text="CRAZY_BATTO"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="RedManager"
+                               FontSize="30"
+                               FontWeight="Bold" />
+                    <TextBlock Text="Sons of the Forest · RedLoader"
+                               Foreground="{StaticResource SecondaryText}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Spielordner" FontWeight="SemiBold" />
+                    <DockPanel LastChildFill="True">
+                        <Button DockPanel.Dock="Right"
+                                Content="Ordner wählen"
+                                Click="ChooseGameFolder_Click" />
+                        <TextBox x:Name="GamePathBox"
+                                 IsReadOnly="True"
+                                 VerticalContentAlignment="Center" />
+                    </DockPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="16,0,0,0">
+                    <Button Content="RedLoader installieren / aktualisieren"
+                            Click="InstallRedLoader_Click" />
+                    <Button Content="Spiel starten"
+                            Click="LaunchGame_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ProgressBar x:Name="BusyBar"
+                     Grid.Row="1"
+                     Height="4"
+                     IsIndeterminate="True"
+                     Visibility="Collapsed"
+                     Margin="0,0,0,8" />
+
+        <TabControl Grid.Row="2" x:Name="MainTabs">
+            <TabItem Header="Online-Mods">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="Suchen" Click="SearchOnline_Click" />
+                            <Button Content="Aktualisieren" Click="RefreshOnline_Click" />
+                        </StackPanel>
+                        <TextBox x:Name="SearchBox"
+                                 MinWidth="340"
+                                 KeyDown="SearchBox_KeyDown"
+                                 ToolTip="Modname, Beschreibung oder Autor" />
+                    </DockPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2.25*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="1*" MinWidth="310" />
+                        </Grid.ColumnDefinitions>
+
+                        <DataGrid x:Name="OnlineGrid"
+                                  Grid.Column="0"
+                                  AlternationCount="2"
+                                  SelectionChanged="OnlineGrid_SelectionChanged">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+                                <DataGridTextColumn Header="Autor" Binding="{Binding DisplayAuthor}" Width="*" />
+                                <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="90" />
+                                <DataGridTextColumn Header="Seite" Binding="{Binding DisplaySide}" Width="90" />
+                                <DataGridTextColumn Header="Mehrspieler" Binding="{Binding MultiplayerText}" Width="115" />
+                                <DataGridTextColumn Header="Downloads" Binding="{Binding Downloads}" Width="100" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <GridSplitter Grid.Column="1"
+                                      Width="8"
+                                      HorizontalAlignment="Stretch"
+                                      Background="#263343" />
+
+                        <Border Grid.Column="2"
+                                Background="{StaticResource PanelBackground}"
+                                BorderBrush="{StaticResource PanelBorder}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock x:Name="OnlineNameText"
+                                           FontSize="24"
+                                           FontWeight="Bold"
+                                           Text="Kein Mod ausgewählt"
+                                           TextWrapping="Wrap" />
+                                <TextBlock x:Name="OnlineMetaText"
+                                           Grid.Row="1"
+                                           Foreground="{StaticResource SecondaryText}"
+                                           Margin="0,5,0,10"
+                                           TextWrapping="Wrap" />
+                                <TextBlock x:Name="OnlineDependencyText"
+                                           Grid.Row="2"
+                                           Foreground="#E9B65A"
+                                           Margin="0,0,0,10"
+                                           TextWrapping="Wrap" />
+                                <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="OnlineDescriptionText"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource SecondaryText}" />
+                                </ScrollViewer>
+                                <Button Grid.Row="4"
+                                        Content="Ausgewählten Mod installieren"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0,14,0,0"
+                                        Click="InstallSelectedMod_Click" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Installiert">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="Aktivieren / deaktivieren" Click="ToggleInstalledMod_Click" />
+                            <Button Content="Deinstallieren" Click="UninstallSelectedMod_Click" />
+                            <Button Content="Mods-Ordner öffnen" Click="OpenModsFolder_Click" />
+                        </StackPanel>
+                        <Button Content="Lokalen Index aktualisieren"
+                                HorizontalAlignment="Left"
+                                Click="RefreshInstalled_Click" />
+                    </DockPanel>
+
+                    <DataGrid x:Name="InstalledGrid" Grid.Row="1" AlternationCount="2">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+                            <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="1.4*" />
+                            <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="100" />
+                            <DataGridTextColumn Header="Autor" Binding="{Binding Author}" Width="*" />
+                            <DataGridTextColumn Header="Typ" Binding="{Binding Kind}" Width="90" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding StatusText}" Width="100" />
+                            <DataGridTextColumn Header="Quelle" Binding="{Binding SourceText}" Width="1.4*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Protokoll">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <Button DockPanel.Dock="Right" Content="Protokoll leeren" Click="ClearLog_Click" />
+                        <TextBlock Text="Laufende Vorgänge und verständliche Fehlerdiagnose"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource SecondaryText}" />
+                    </DockPanel>
+                    <TextBox x:Name="LogBox"
+                             Grid.Row="1"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas"
+                             FontSize="13"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="3"
+                Background="{StaticResource PanelBackground}"
+                BorderBrush="{StaticResource PanelBorder}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="10,7"
+                Margin="0,10,0,0">
+            <DockPanel>
+                <TextBlock x:Name="RedLoaderStatusText"
+                           DockPanel.Dock="Right"
+                           Foreground="{StaticResource SecondaryText}" />
+                <TextBlock x:Name="StatusText" Text="Bereit" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>
