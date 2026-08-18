@@ -1,4 +1,4 @@
-name: Build precompiled SOTF Death Counter 0.3.2
+name: Build precompiled SOTF Death Counter 0.3.3 Safe Mode
 
 on:
   push:
@@ -31,14 +31,17 @@ jobs:
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'crazybatto-precompiled-mod-output'
           & .\tools\Build-PrecompiledDeathCounter.ps1 -OutputDirectory $output
-          $status = Get-Content -LiteralPath (Join-Path $output 'build-status.json') -Raw | ConvertFrom-Json
+          $statusPath = Join-Path $output 'build-status.json'
+          $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+          $status.modVersion = '0.3.3'
+          $status | ConvertTo-Json | Set-Content -LiteralPath $statusPath -Encoding utf8
           "success=$($status.success.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Upload precompiled mod and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CrazyBatto-SOTF-DeathCounter-v0.3.2-precompiled
+          name: CrazyBatto-SOTF-DeathCounter-v0.3.3-SafeMode-precompiled
           path: ${{ runner.temp }}/crazybatto-precompiled-mod-output/**/*
           if-no-files-found: error
           retention-days: 30
@@ -53,7 +56,7 @@ jobs:
           $source = Join-Path $env:RUNNER_TEMP 'crazybatto-precompiled-mod-output'
           if (-not (Test-Path $source)) {
             New-Item -ItemType Directory -Path $source -Force | Out-Null
-            '{"success":false,"error":"output directory missing"}' |
+            '{"success":false,"modVersion":"0.3.3","error":"output directory missing"}' |
               Set-Content -LiteralPath (Join-Path $source 'build-status.json') -Encoding utf8
           }
           Set-Content -LiteralPath (Join-Path $source 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
@@ -62,15 +65,15 @@ jobs:
           git init
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout --orphan precompiled-death-counter-v0.3.2
+          git checkout --orphan precompiled-death-counter-v0.3.3
           git add --all
-          git commit -m "Precompiled SOTF Death Counter 0.3.2 for $env:GITHUB_SHA"
+          git commit -m "Precompiled SOTF Death Counter 0.3.3 Safe Mode for $env:GITHUB_SHA"
           $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GITHUB_REPOSITORY).git"
-          git push --force $remote HEAD:precompiled-death-counter-v0.3.2
+          git push --force $remote HEAD:precompiled-death-counter-v0.3.3
 
       - name: Mark compilation failure
         if: steps.build.outputs.success != 'true'
         shell: pwsh
         run: |
-          Write-Error 'Precompiled Death Counter build failed. See the output branch build.log.'
+          Write-Error 'Precompiled Death Counter Safe Mode build failed. See the output branch build.log.'
           exit 1
