@@ -1,0 +1,398 @@
+name: Build CrazyBatto RedManager 1.2.2 integrated mod
+
+on:
+  push:
+    branches:
+      - sotf-death-counter-tauri-v1.2.0
+    paths:
+      - .github/workflows/build-integrated-precompiled-manager.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Embed precompiled mod, build and package
+        id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $managerVersion = '1.2.2'
+          $modVersion = '0.3.2'
+          $resourceName = 'CrazyBatto.SotfDeathCounter-precompiled.zip'
+          $reportDir = Join-Path $env:RUNNER_TEMP 'crazybatto-redmanager-1.2.2'
+          $stageDir = Join-Path $env:RUNNER_TEMP 'crazybatto-precompiled-resource'
+          $logPath = Join-Path $reportDir 'build.log'
+
+          foreach ($directory in @($reportDir, $stageDir)) {
+            if (Test-Path $directory) { Remove-Item $directory -Recurse -Force }
+            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+          }
+
+          function Write-BuildLog {
+            param([string]$Message)
+            $line = "[$([DateTime]::UtcNow.ToString('u'))] $Message"
+            Write-Host $line
+            $line | Out-File -FilePath $logPath -Append -Encoding utf8
+          }
+
+          function Invoke-Stage {
+            param([string]$Name, [string]$Executable, [string[]]$Arguments)
+            Write-BuildLog "START: $Name"
+            & $Executable @Arguments 2>&1 | Tee-Object -FilePath $logPath -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "$Name failed with exit code $LASTEXITCODE"
+            }
+            Write-BuildLog "END: $Name"
+          }
+
+          try {
+            Write-BuildLog "Preparing RedManager $managerVersion with precompiled Death Counter $modVersion"
+
+            $baseUrl = 'https://raw.githubusercontent.com/dannymeienbrock99-prog/RedManager-main/precompiled-death-counter-v0.3.2'
+            $dllPath = Join-Path $stageDir 'CrazyBatto.SotfDeathCounter.dll'
+            $manifestPath = Join-Path $stageDir 'manifest.json'
+            $checksumPath = Join-Path $stageDir 'DLL-SHA256.txt'
+
+            Invoke-WebRequest -Uri "$baseUrl/CrazyBatto.SotfDeathCounter.dll" -OutFile $dllPath
+            Invoke-WebRequest -Uri "$baseUrl/manifest.json" -OutFile $manifestPath
+            Invoke-WebRequest -Uri "$baseUrl/DLL-SHA256.txt" -OutFile $checksumPath
+
+            $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+            $actualHash = (Get-FileHash -LiteralPath $dllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) {
+              throw "Precompiled mod checksum mismatch. Expected $expectedHash, got $actualHash"
+            }
+
+            $resourceDirectory = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\resources'
+            New-Item -ItemType Directory -Path $resourceDirectory -Force | Out-Null
+            $resourceArchive = Join-Path $resourceDirectory $resourceName
+            if (Test-Path $resourceArchive) { Remove-Item $resourceArchive -Force }
+            Compress-Archive -Path $dllPath, $manifestPath, $checksumPath -DestinationPath $resourceArchive -CompressionLevel Optimal
+            Write-BuildLog "Verified and embedded precompiled mod DLL: $actualHash"
+
+            # Update all application version declarations.
+            node -e "const fs=require('fs'); const v='1.2.2'; for (const f of ['package.json','package-lock.json']) { if(!fs.existsSync(f)) continue; const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; if(j.packages && j.packages['']) j.packages[''].version=v; fs.writeFileSync(f, JSON.stringify(j,null,2)+'\n'); }"
+
+            $cargoPath = 'src-tauri\Cargo.toml'
+            $cargo = Get-Content -LiteralPath $cargoPath -Raw
+            $cargo = [regex]::Replace($cargo, '(?m)^version\s*=\s*"[^"]+"', 'version = "1.2.2"', 1)
+            Set-Content -LiteralPath $cargoPath -Value $cargo -Encoding utf8
+
+            $tauriConfigPath = 'src-tauri\tauri.conf.json'
+            $tauriConfig = Get-Content -LiteralPath $tauriConfigPath -Raw | ConvertFrom-Json
+            $tauriConfig.package.version = $managerVersion
+            $resources = @($tauriConfig.tauri.bundle.resources)
+            $resourceEntry = "resources/$resourceName"
+            if ($resources -notcontains $resourceEntry) { $resources += $resourceEntry }
+            $tauriConfig.tauri.bundle.resources = $resources
+            $tauriConfig | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $tauriConfigPath -Encoding utf8
+
+            # Add a direct-install command. It copies the verified DLL and manifest;
+            # no local compiler or .NET SDK is required on the user's PC.
+            $mainPath = 'src-tauri\src\main.rs'
+            $main = Get-Content -LiteralPath $mainPath -Raw
+            if ($main -notmatch 'BUNDLED_PRECOMPILED_MOD_ARCHIVE') {
+              $main = $main.Replace(
+                'const BUNDLED_MOD_ARCHIVE: &str = "CrazyBatto.SotfDeathCounter-source.zip";',
+                'const BUNDLED_MOD_ARCHIVE: &str = "CrazyBatto.SotfDeathCounter-source.zip";' + "`r`n" +
+                'const BUNDLED_PRECOMPILED_MOD_ARCHIVE: &str = "CrazyBatto.SotfDeathCounter-precompiled.zip";'
+              )
+            }
+
+            if ($main -notmatch 'fn install_precompiled_bundled_death_counter') {
+              $rustCommand = @'
+fn resolve_precompiled_mod_archive(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let relative_candidates = [
+        PathBuf::from("resources").join(BUNDLED_PRECOMPILED_MOD_ARCHIVE),
+        PathBuf::from(BUNDLED_PRECOMPILED_MOD_ARCHIVE),
+    ];
+
+    for relative in relative_candidates {
+        if let Some(path) = app.path_resolver().resolve_resource(&relative) {
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
+    }
+
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            for candidate in [
+                directory.join("resources").join(BUNDLED_PRECOMPILED_MOD_ARCHIVE),
+                directory.join(BUNDLED_PRECOMPILED_MOD_ARCHIVE),
+            ] {
+                if candidate.is_file() {
+                    return Ok(candidate);
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Die eingebettete Mod-Datei {} wurde nicht gefunden. Installiere RedManager erneut.",
+        BUNDLED_PRECOMPILED_MOD_ARCHIVE
+    ))
+}
+
+#[tauri::command]
+fn install_precompiled_bundled_death_counter(
+    app: tauri::AppHandle,
+    game_exe: String,
+) -> Result<BundledModBuildResult, String> {
+    let game_directory = game_directory_from_executable(&game_exe)?;
+    let build_directory = std::env::temp_dir()
+        .join("CrazyBattoRedManager")
+        .join("PrecompiledDeathCounter");
+
+    let failure = |message: String, stderr: String| BundledModBuildResult {
+        success: false,
+        message,
+        stdout: String::new(),
+        stderr,
+        build_directory: build_directory.to_string_lossy().into_owned(),
+        installed_path: None,
+    };
+
+    let redloader_sdk = game_directory
+        .join("_RedLoader")
+        .join("net6")
+        .join("SonsSdk.dll");
+    if !redloader_sdk.is_file() {
+        return Ok(failure(
+            "RedLoader ist noch nicht vollständig vorbereitet.".to_string(),
+            "SonsSdk.dll fehlt. Installiere RedLoader und starte Sons of the Forest einmal über RedLoader.".to_string(),
+        ));
+    }
+
+    let archive = match resolve_precompiled_mod_archive(&app) {
+        Ok(path) => path,
+        Err(error) => return Ok(failure("Eingebettete Mod konnte nicht geöffnet werden.".to_string(), error)),
+    };
+
+    if build_directory.exists() {
+        if let Err(error) = fs::remove_dir_all(&build_directory) {
+            return Ok(failure("Temporärer Mod-Ordner konnte nicht geleert werden.".to_string(), error.to_string()));
+        }
+    }
+    if let Err(error) = fs::create_dir_all(&build_directory) {
+        return Ok(failure("Temporärer Mod-Ordner konnte nicht erstellt werden.".to_string(), error.to_string()));
+    }
+    if let Err(error) = unzip_file(&archive, &build_directory) {
+        return Ok(failure("Eingebettete Mod konnte nicht entpackt werden.".to_string(), error));
+    }
+
+    let dll_source = build_directory.join(format!("{BUNDLED_ASSEMBLY_NAME}.dll"));
+    let manifest_source = build_directory.join("manifest.json");
+    if !dll_source.is_file() || !manifest_source.is_file() {
+        return Ok(failure(
+            "Das eingebettete Mod-Paket ist unvollständig.".to_string(),
+            "DLL oder manifest.json fehlt im Paket.".to_string(),
+        ));
+    }
+
+    let mods_directory = game_directory.join("Mods");
+    let enabled_path = mods_directory.join(format!("{BUNDLED_ASSEMBLY_NAME}.dll"));
+    let disabled_path = mods_directory.join(format!("{BUNDLED_ASSEMBLY_NAME}.disabled"));
+    let staged_path = mods_directory.join(format!("{BUNDLED_ASSEMBLY_NAME}.installing"));
+    let backup_path = mods_directory.join(format!("{BUNDLED_ASSEMBLY_NAME}.backup"));
+    let manifest_directory = mods_directory.join(BUNDLED_ASSEMBLY_NAME);
+    let manifest_path = manifest_directory.join("manifest.json");
+
+    let install_result: Result<(), String> = (|| {
+        fs::create_dir_all(&mods_directory).map_err(|error| error.to_string())?;
+        fs::create_dir_all(&manifest_directory).map_err(|error| error.to_string())?;
+
+        for temporary in [&staged_path, &backup_path] {
+            if temporary.exists() {
+                fs::remove_file(temporary).map_err(|error| error.to_string())?;
+            }
+        }
+
+        if enabled_path.is_file() {
+            fs::copy(&enabled_path, &backup_path).map_err(|error| error.to_string())?;
+        } else if disabled_path.is_file() {
+            fs::copy(&disabled_path, &backup_path).map_err(|error| error.to_string())?;
+        }
+
+        fs::copy(&dll_source, &staged_path).map_err(|error| error.to_string())?;
+        if enabled_path.exists() {
+            fs::remove_file(&enabled_path).map_err(|error| error.to_string())?;
+        }
+        if disabled_path.exists() {
+            fs::remove_file(&disabled_path).map_err(|error| error.to_string())?;
+        }
+        fs::rename(&staged_path, &enabled_path).map_err(|error| error.to_string())?;
+        fs::copy(&manifest_source, &manifest_path).map_err(|error| error.to_string())?;
+
+        if backup_path.exists() {
+            let _ = fs::remove_file(&backup_path);
+        }
+        Ok(())
+    })();
+
+    if let Err(error) = install_result {
+        let _ = fs::remove_file(&staged_path);
+        if backup_path.is_file() {
+            let _ = fs::copy(&backup_path, &enabled_path);
+            let _ = fs::remove_file(&backup_path);
+        }
+        return Ok(failure(
+            "Die Mod konnte nicht installiert werden. Schließe das Spiel und versuche es erneut.".to_string(),
+            error,
+        ));
+    }
+
+    Ok(BundledModBuildResult {
+        success: true,
+        message: format!(
+            "CrazyBatto SOTF Death Counter {} wurde direkt installiert.",
+            BUNDLED_MOD_VERSION
+        ),
+        stdout: format!(
+            "Installiert: {}\nOBS-Overlay: http://127.0.0.1:19447/overlay",
+            enabled_path.to_string_lossy()
+        ),
+        stderr: String::new(),
+        build_directory: build_directory.to_string_lossy().into_owned(),
+        installed_path: Some(enabled_path.to_string_lossy().into_owned()),
+    })
+}
+
+'@
+              $main = $main.Replace('fn main() {', $rustCommand + "`r`nfn main() {")
+            }
+
+            if ($main -notmatch '(?m)^\s*install_precompiled_bundled_death_counter,\s*$') {
+              $main = [regex]::Replace(
+                $main,
+                '(?m)^(\s*)build_and_install_bundled_death_counter,\s*$',
+                '$0' + "`r`n" + '$1install_precompiled_bundled_death_counter,',
+                1
+              )
+            }
+            Set-Content -LiteralPath $mainPath -Value $main -Encoding utf8
+
+            $bundledModsPath = 'src\lib\bundledMods.ts'
+            $bundledMods = Get-Content -LiteralPath $bundledModsPath -Raw
+            $bundledMods = $bundledMods.Replace('"build_and_install_bundled_death_counter"', '"install_precompiled_bundled_death_counter"')
+            $bundledMods = $bundledMods.Replace("'build_and_install_bundled_death_counter'", "'install_precompiled_bundled_death_counter'")
+            Set-Content -LiteralPath $bundledModsPath -Value $bundledMods -Encoding utf8
+
+            $uiPath = 'src\pages\BattoTools.svelte'
+            $ui = Get-Content -LiteralPath $uiPath -Raw
+            $ui = $ui.Replace('isDotnetSdkInstalled.set(await invoke<boolean>("is_dotnet6_sdk_installed"));', 'isDotnetSdkInstalled.set(true);')
+            $ui = $ui.Replace('CrazyBatto Todeszähler wird gegen deine Spielversion gebaut …', 'CrazyBatto Todeszähler wird direkt installiert …')
+            $ui = $ui.Replace('Todeszähler neu bauen / aktualisieren', 'Todeszähler aktualisieren')
+            $ui = $ui.Replace('Todeszähler bauen und installieren', 'Todeszähler installieren')
+            $ui = $ui.Replace('disabled={!$isDotnetSdkInstalled} ', '')
+            $ui = $ui.Replace('Für diesen einmaligen lokalen Build wird das <b>.NET 6 SDK</b> benötigt. Der normale RedLoader benötigt nur die Runtime.', 'Die Mod-DLL ist bereits vorkompiliert und wird ohne lokales SDK direkt installiert.')
+            $ui = $ui.Replace('Die Mod wird auf deinem PC gegen genau die RedLoader- und Spiel-DLLs deiner Installation gebaut. Dadurch enthält dieses Repository keine kopierten Spieldateien. Das Universal-Heart-Rate-Modul ist hier bewusst nicht enthalten.', 'Die geprüfte Mod-DLL wird direkt installiert. Es werden keine Spieldateien mitgeliefert. Das Universal-Heart-Rate-Modul bleibt bewusst im Batto-OBS-Tool.')
+            Set-Content -LiteralPath $uiPath -Value $ui -Encoding utf8
+
+            Invoke-Stage 'Install frontend dependencies' 'npm.cmd' @('ci')
+            Invoke-Stage 'Svelte and TypeScript check' 'npm.cmd' @('run', 'check')
+            Invoke-Stage 'Rust unit tests' 'cargo.exe' @('test', '--manifest-path', 'src-tauri/Cargo.toml')
+            Invoke-Stage 'Build Tauri Windows bundles' 'npm.cmd' @('run', 'tauri', '--', 'build')
+
+            $bundleDir = 'src-tauri\target\release\bundle'
+            if (-not (Test-Path -LiteralPath $bundleDir -PathType Container)) {
+              throw "Bundle directory was not created: $bundleDir"
+            }
+            $bundleFiles = Get-ChildItem -LiteralPath $bundleDir -Recurse -File
+            if (-not $bundleFiles) { throw 'No Windows bundle files were created.' }
+
+            $packagePath = Join-Path $reportDir 'CrazyBatto-RedManager-Windows-v1.2.2-integrated.zip'
+            Compress-Archive -Path (Join-Path $bundleDir '*') -DestinationPath $packagePath -CompressionLevel Optimal -Force
+            $packageHash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$packageHash  CrazyBatto-RedManager-Windows-v1.2.2-integrated.zip" | Set-Content -LiteralPath (Join-Path $reportDir 'SHA256SUMS.txt') -Encoding ascii
+
+            [ordered]@{
+              success = $true
+              version = $managerVersion
+              bundledModVersion = $modVersion
+              installMode = 'precompiled-direct'
+              sourceCommit = $env:GITHUB_SHA
+              generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+              package = 'CrazyBatto-RedManager-Windows-v1.2.2-integrated.zip'
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $reportDir 'build-status.json') -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $reportDir 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+            "success=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-BuildLog 'FINAL RESULT: SUCCESS'
+          }
+          catch {
+            Write-BuildLog "FINAL RESULT: FAILED - $($_.Exception.Message)"
+            [ordered]@{
+              success = $false
+              version = $managerVersion
+              bundledModVersion = $modVersion
+              installMode = 'precompiled-direct'
+              sourceCommit = $env:GITHUB_SHA
+              generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+              error = $_.Exception.Message
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $reportDir 'build-status.json') -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $reportDir 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+            "success=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+      - name: Upload installer package and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-Windows-v1.2.2-integrated-${{ github.sha }}
+          path: ${{ runner.temp }}/crazybatto-redmanager-1.2.2/**/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish deterministic output branch
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $env:RUNNER_TEMP 'crazybatto-redmanager-1.2.2'
+          if (-not (Test-Path $source)) {
+            New-Item -ItemType Directory -Path $source -Force | Out-Null
+            '{"success":false,"error":"output directory missing"}' | Set-Content -LiteralPath (Join-Path $source 'build-status.json') -Encoding utf8
+          }
+          Set-Location $source
+          git init
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan windows-build-output-v1.2.2-integrated
+          git add --all
+          git commit -m "Integrated Windows build 1.2.2 for $env:GITHUB_SHA"
+          $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GITHUB_REPOSITORY).git"
+          git push --force $remote HEAD:windows-build-output-v1.2.2-integrated
+
+      - name: Mark compilation failure
+        if: steps.build.outputs.success != 'true'
+        shell: pwsh
+        run: |
+          Write-Error 'Integrated RedManager build failed. See build.log in the output branch.'
+          exit 1
