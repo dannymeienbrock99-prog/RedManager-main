@@ -3,69 +3,42 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>CrazyBatto.SotfDeathCounter</AssemblyName>
     <RootNamespace>CrazyBatto.SotfDeathCounter</RootNamespace>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
     <LangVersion>10.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <GameDir Condition="'$(GameDir)' == '' and '$(SOTF_GAME_DIR)' != ''">$(SOTF_GAME_DIR)</GameDir>
+    <RedLoaderRoot Condition="'$(RedLoaderRoot)' == '' and '$(GameDir)' != ''">$(GameDir)\_RedLoader</RedLoaderRoot>
+    <RedLoaderNet6Dir Condition="'$(RedLoaderNet6Dir)' == ''">$(RedLoaderRoot)\net6</RedLoaderNet6Dir>
+    <UnityReferenceDir Condition="'$(UnityReferenceDir)' == '' and Exists('$(RedLoaderRoot)\Game\UnityEngine.CoreModule.dll')">$(RedLoaderRoot)\Game</UnityReferenceDir>
+    <UnityReferenceDir Condition="'$(UnityReferenceDir)' == '' and Exists('$(RedLoaderRoot)\unity-libs\UnityEngine.CoreModule.dll')">$(RedLoaderRoot)\unity-libs</UnityReferenceDir>
   </PropertyGroup>
 
+  <!--
+    The mod uses RedLoader/SonsSdk directly and accesses game-specific player
+    objects through reflection. Referencing every generated Sons/bolt assembly
+    made the build fail unnecessarily when RedLoader's interop generation was
+    incomplete. Unity API references may come from either Game or RedLoader's
+    official unity-libs fallback.
+  -->
   <ItemGroup>
-    <Reference Include="Il2CppInterop.Common">
-      <HintPath>$(GameDir)\_RedLoader\net6\Il2CppInterop.Common.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Il2CppInterop.Runtime">
-      <HintPath>$(GameDir)\_RedLoader\net6\Il2CppInterop.Runtime.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Il2Cppmscorlib">
-      <HintPath>$(GameDir)\_RedLoader\Game\Il2Cppmscorlib.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="RedLoader">
-      <HintPath>$(GameDir)\_RedLoader\net6\RedLoader.dll</HintPath>
+      <HintPath>$(RedLoaderNet6Dir)\RedLoader.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SonsSdk">
-      <HintPath>$(GameDir)\_RedLoader\net6\SonsSdk.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Sons">
-      <HintPath>$(GameDir)\_RedLoader\Game\Sons.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Endnight">
-      <HintPath>$(GameDir)\_RedLoader\Game\Endnight.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Sons.Multiplayer">
-      <HintPath>$(GameDir)\_RedLoader\Game\Sons.Multiplayer.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine">
-      <HintPath>$(GameDir)\_RedLoader\Game\UnityEngine.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(GameDir)\_RedLoader\Game\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(RedLoaderNet6Dir)\SonsSdk.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>$(GameDir)\_RedLoader\net6\0Harmony.dll</HintPath>
+      <HintPath>$(RedLoaderNet6Dir)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="bolt">
-      <HintPath>$(GameDir)\_RedLoader\Game\bolt.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Bolt.Unity">
-      <HintPath>$(GameDir)\_RedLoader\Game\Bolt.Unity.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="bolt.user">
-      <HintPath>$(GameDir)\_RedLoader\Game\bolt.user.dll</HintPath>
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(UnityReferenceDir)')">
+    <Reference Include="$(UnityReferenceDir)\UnityEngine*.dll">
       <Private>false</Private>
     </Reference>
   </ItemGroup>
@@ -84,7 +57,13 @@
            Text="Set GameDir or SOTF_GAME_DIR to the Sons Of The Forest installation directory." />
     <Error Condition="'$(GameDir)' != '' and !Exists('$(GameDir)\SonsOfTheForest.exe')"
            Text="SonsOfTheForest.exe was not found in GameDir." />
-    <Error Condition="'$(GameDir)' != '' and !Exists('$(GameDir)\_RedLoader\net6\SonsSdk.dll')"
-           Text="SonsSdk.dll was not found. Install and start RedLoader once before building the mod." />
+    <Error Condition="!Exists('$(RedLoaderNet6Dir)\SonsSdk.dll')"
+           Text="SonsSdk.dll was not found. Install RedLoader and start the game once." />
+    <Error Condition="!Exists('$(RedLoaderNet6Dir)\RedLoader.dll')"
+           Text="RedLoader.dll was not found in the RedLoader net6 directory." />
+    <Error Condition="!Exists('$(RedLoaderNet6Dir)\0Harmony.dll')"
+           Text="0Harmony.dll was not found in the RedLoader net6 directory." />
+    <Error Condition="'$(UnityReferenceDir)' == '' or !Exists('$(UnityReferenceDir)\UnityEngine.CoreModule.dll')"
+           Text="UnityEngine.CoreModule.dll was not found in _RedLoader\Game or _RedLoader\unity-libs. Start the game once with RedLoader and wait until the main menu." />
   </Target>
 </Project>
