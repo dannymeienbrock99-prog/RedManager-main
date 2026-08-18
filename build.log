@@ -1,0 +1,33 @@
+[2026-08-18 05:12:24Z] Starting precompiled CrazyBatto SOTF Death Counter 0.3.2 build.
+[2026-08-18 05:12:24Z] Downloading official RedLoader 0.8.6 release.
+[2026-08-18 05:12:26Z] Official RedLoader SDK assemblies verified.
+  Determining projects to restore...
+  Restored C:\Users\runneradmin\AppData\Local\Temp\CrazyBattoRedManager\PrecompiledDeathCounter\UnityStubs\UnityCoreStub\UnityCoreStub.csproj (in 131 ms).
+  UnityCoreStub -> C:\Users\runneradmin\AppData\Local\Temp\CrazyBattoRedManager\PrecompiledDeathCounter\UnityStubs\UnityCoreStub\out\UnityEngine.CoreModule.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:07.72
+  Determining projects to restore...
+  Restored C:\Users\runneradmin\AppData\Local\Temp\CrazyBattoRedManager\PrecompiledDeathCounter\UnityStubs\UnityFacadeStub\UnityFacadeStub.csproj (in 89 ms).
+  UnityFacadeStub -> C:\Users\runneradmin\AppData\Local\Temp\CrazyBattoRedManager\PrecompiledDeathCounter\UnityStubs\UnityFacadeStub\out\UnityEngine.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.49
+[2026-08-18 05:12:38Z] Compiling against the official RedLoader and SonsSdk assemblies.
+  Determining projects to restore...
+  Restored D:\a\RedManager-main\RedManager-main\bundled-mods\CrazyBatto.SotfDeathCounter\CrazyBatto.SotfDeathCounter.csproj (in 86 ms).
+  CrazyBatto.SotfDeathCounter -> C:\Users\runneradmin\AppData\Local\Temp\CrazyBattoRedManager\PrecompiledDeathCounter\mod-output\CrazyBatto.SotfDeathCounter.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:02.46
+[2026-08-18 05:12:41Z] Precompiled DLL created successfully: d01d5772aef89500bc009245588a1187b4c91763214a034a77a51445df641ac0
+[2026-08-18 05:12:41Z] FINAL RESULT: SUCCESS
