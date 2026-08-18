@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'CrazyBatto.RedManager'">
+    <!-- RedManager is a Windows-only desktop application. Pinning the default RID
+         makes ordinary builds and no-build publish steps use the same asset graph. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+</Project>
