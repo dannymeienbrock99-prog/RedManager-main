@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CrazyBatto.RedManager</AssemblyName>
+    <RootNamespace>CrazyBatto.RedManager</RootNamespace>
+    <Version>2.0.0</Version>
+    <Authors>Crazy_Batto contributors</Authors>
+    <Product>Crazy_Batto RedManager</Product>
+    <Description>Secure RedLoader mod manager for Sons of the Forest.</Description>
+    <Copyright>Copyright © 2026 Crazy_Batto contributors</Copyright>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+</Project>
