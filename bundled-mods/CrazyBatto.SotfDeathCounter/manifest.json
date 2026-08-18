@@ -3,7 +3,7 @@
   "id": "CrazyBatto_SotfDeathCounter",
   "name": "CrazyBatto SOTF Death Counter",
   "author": "Crazy_Batto",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Automatically discovers host and multiplayer teammates, counts confirmed deaths, and exposes a local OBS browser overlay.",
   "platform": "Universal",
   "dependencies": [],
