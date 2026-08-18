@@ -1,0 +1,248 @@
+name: Build SOTF Death Counter 0.3.3 Safe Mode Installer
+
+on:
+  push:
+    branches:
+      - sotf-death-counter-tauri-v1.2.0
+    paths:
+      - .github/workflows/build-safe-mod-installer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-safe-installer:
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 6 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Compile Safe Mode mod
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'crazybatto-safe-mod-build'
+          & .\tools\Build-PrecompiledDeathCounter.ps1 -OutputDirectory $output
+
+          $status = Get-Content -LiteralPath (Join-Path $output 'build-status.json') -Raw | ConvertFrom-Json
+          if (-not $status.success) {
+            throw "Safe Mode mod compilation failed: $($status.error)"
+          }
+
+          $manifest = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.version -ne '0.3.3') {
+            throw "Unexpected mod version: $($manifest.version)"
+          }
+
+          if (-not (Test-Path -LiteralPath (Join-Path $output 'CrazyBatto.SotfDeathCounter.dll'))) {
+            throw 'Safe Mode DLL was not produced.'
+          }
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command makensis.exe -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+          }
+
+      - name: Build graphical Windows installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $payload = Join-Path $env:RUNNER_TEMP 'crazybatto-safe-mod-build'
+          $package = Join-Path $env:RUNNER_TEMP 'crazybatto-safe-installer-output'
+          if (Test-Path $package) { Remove-Item $package -Recurse -Force }
+          New-Item -ItemType Directory -Path $package -Force | Out-Null
+
+          $safeSettings = @'
+          {
+            "EnableObsOverlay": true,
+            "OverlayPort": 19447,
+            "CountKnockdowns": false,
+            "ShowOfflinePlayers": false,
+            "UseLifetimeDeaths": false,
+            "SafeMode": true,
+            "ScanIntervalMilliseconds": 2500,
+            "WorldScanIntervalMilliseconds": 15000,
+            "EnableRuntimeHooks": false,
+            "WriteDiscoveryDiagnostics": false
+          }
+          '@
+          $safeSettings.Trim() | Set-Content -LiteralPath (Join-Path $payload 'settings-safe.json') -Encoding utf8
+
+          $payloadEscaped = $payload.Replace('\', '\\')
+          $outputEscaped = (Join-Path $package 'CrazyBatto_SOTF_DeathCounter_0.3.3_SafeMode_Setup.exe').Replace('\', '\\')
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'CrazyBattoSafeModeInstaller.nsi'
+
+          @"
+          Unicode true
+          !include "MUI2.nsh"
+          !include "FileFunc.nsh"
+          !include "LogicLib.nsh"
+
+          Name "CrazyBatto SOTF Death Counter 0.3.3 Safe Mode"
+          OutFile "$outputEscaped"
+          InstallDir "C:\Program Files (x86)\Steam\steamapps\common\Sons Of The Forest"
+          RequestExecutionLevel admin
+          SetCompressor /SOLID lzma
+          BrandingText "Crazy_Batto – Safe Mode"
+
+          !define MUI_ABORTWARNING
+          !define MUI_ICON "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
+          !define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
+
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !define MUI_FINISHPAGE_NOAUTOCLOSE
+          !insertmacro MUI_PAGE_FINISH
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "German"
+
+          Function .onInit
+            ReadRegStr $0 HKCU "Software\Valve\Steam" "SteamPath"
+            ${If} $0 != ""
+              StrCpy $1 "$0\steamapps\common\Sons Of The Forest"
+              ${If} ${FileExists} "$1\SonsOfTheForest.exe"
+                StrCpy $INSTDIR $1
+                Return
+              ${EndIf}
+            ${EndIf}
+
+            ReadRegStr $0 HKLM "Software\WOW6432Node\Valve\Steam" "InstallPath"
+            ${If} $0 != ""
+              StrCpy $1 "$0\steamapps\common\Sons Of The Forest"
+              ${If} ${FileExists} "$1\SonsOfTheForest.exe"
+                StrCpy $INSTDIR $1
+              ${EndIf}
+            ${EndIf}
+          FunctionEnd
+
+          Function .onVerifyInstDir
+            ${IfNot} ${FileExists} "$INSTDIR\SonsOfTheForest.exe"
+              MessageBox MB_ICONSTOP|MB_OK "In diesem Ordner wurde SonsOfTheForest.exe nicht gefunden.$\r$\n$\r$\nWähle den Hauptordner von Sons of the Forest aus."
+              Abort
+            ${EndIf}
+          FunctionEnd
+
+          Section "Safe Mode Death Counter installieren" SEC01
+            SetShellVarContext current
+
+            ${IfNot} ${FileExists} "$INSTDIR\_RedLoader\net6\SonsSdk.dll"
+              MessageBox MB_ICONSTOP|MB_OK "RedLoader wurde in diesem Spielordner nicht vollständig gefunden.$\r$\n$\r$\nInstalliere RedLoader, starte Sons of the Forest einmal bis ins Hauptmenü und führe dieses Setup danach erneut aus."
+              Abort
+            ${EndIf}
+
+            CreateDirectory "$INSTDIR\Mods"
+            CreateDirectory "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter"
+
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter.dll"
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter.disabled"
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter.dll.backup"
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter.dll.new"
+
+            SetOutPath "$INSTDIR\Mods"
+            File /oname=CrazyBatto.SotfDeathCounter.dll "$payloadEscaped\CrazyBatto.SotfDeathCounter.dll"
+
+            SetOutPath "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter"
+            File /oname=manifest.json "$payloadEscaped\manifest.json"
+            WriteUninstaller "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter\Uninstall_CrazyBatto_DeathCounter.exe"
+
+            CreateDirectory "$LOCALAPPDATA\Crazy_Batto\SOTFDeathCounter"
+            ${If} ${FileExists} "$LOCALAPPDATA\Crazy_Batto\SOTFDeathCounter\settings.json"
+              CopyFiles /SILENT "$LOCALAPPDATA\Crazy_Batto\SOTFDeathCounter\settings.json" "$LOCALAPPDATA\Crazy_Batto\SOTFDeathCounter\settings-before-safe-mode.json"
+            ${EndIf}
+            SetOutPath "$LOCALAPPDATA\Crazy_Batto\SOTFDeathCounter"
+            File /oname=settings.json "$payloadEscaped\settings-safe.json"
+
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CrazyBattoSOTFDeathCounter" "DisplayName" "CrazyBatto SOTF Death Counter 0.3.3 Safe Mode"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CrazyBattoSOTFDeathCounter" "DisplayVersion" "0.3.3"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CrazyBattoSOTFDeathCounter" "Publisher" "Crazy_Batto"
+            WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CrazyBattoSOTFDeathCounter" "UninstallString" '"$INSTDIR\Mods\CrazyBatto.SotfDeathCounter\Uninstall_CrazyBatto_DeathCounter.exe"'
+
+            MessageBox MB_ICONINFORMATION|MB_OK "Safe Mode 0.3.3 wurde installiert.$\r$\n$\r$\nDie alte aggressive DLL und alte Safe-Mode-Einstellungen wurden ersetzt."
+          SectionEnd
+
+          Section "Uninstall"
+            SetShellVarContext current
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter.dll"
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter.disabled"
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter\manifest.json"
+            Delete /REBOOTOK "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter\Uninstall_CrazyBatto_DeathCounter.exe"
+            RMDir "$INSTDIR\Mods\CrazyBatto.SotfDeathCounter"
+            DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CrazyBattoSOTFDeathCounter"
+          SectionEnd
+          "@ | Set-Content -LiteralPath $scriptPath -Encoding utf8
+
+          $makeNsis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $makeNsis) {
+            $makeNsis = 'C:\Program Files (x86)\NSIS\makensis.exe'
+          }
+          & $makeNsis $scriptPath
+          if ($LASTEXITCODE -ne 0) { throw "NSIS failed with exit code $LASTEXITCODE" }
+
+          $readyRoot = Join-Path $package 'ReadyMod'
+          New-Item -ItemType Directory -Path (Join-Path $readyRoot 'Mods\CrazyBatto.SotfDeathCounter') -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $payload 'CrazyBatto.SotfDeathCounter.dll') -Destination (Join-Path $readyRoot 'Mods')
+          Copy-Item -LiteralPath (Join-Path $payload 'manifest.json') -Destination (Join-Path $readyRoot 'Mods\CrazyBatto.SotfDeathCounter')
+          Copy-Item -LiteralPath (Join-Path $payload 'settings-safe.json') -Destination $readyRoot
+          @'
+          CrazyBatto SOTF Death Counter 0.3.3 Safe Mode
+
+          Empfohlen: Die Setup.exe starten und den Sons-of-the-Forest-Hauptordner auswählen.
+          Vor der Installation das Spiel vollständig schließen.
+
+          Safe Mode deaktiviert dynamische Harmony-Todeshooks und den Vollscan sämtlicher MonoBehaviour-Objekte.
+          OBS-Browserquelle: http://127.0.0.1:19447/overlay
+          '@ | Set-Content -LiteralPath (Join-Path $readyRoot 'START_HIER.txt') -Encoding utf8
+
+          Compress-Archive -Path (Join-Path $readyRoot '*') -DestinationPath (Join-Path $package 'CrazyBatto_SOTF_DeathCounter_0.3.3_SafeMode_READY.zip') -CompressionLevel Optimal -Force
+
+          Get-ChildItem -LiteralPath $package -File | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content -LiteralPath (Join-Path $package 'SHA256SUMS.txt') -Encoding ascii
+
+          [ordered]@{
+            success = $true
+            modVersion = '0.3.3'
+            safeMode = $true
+            sourceCommit = $env:GITHUB_SHA
+            generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $package 'build-status.json') -Encoding utf8
+          Set-Content -LiteralPath (Join-Path $package 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+
+      - name: Upload Safe Mode installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-SOTF-DeathCounter-0.3.3-SafeMode
+          path: ${{ runner.temp }}/crazybatto-safe-installer-output/**/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish deterministic Safe Mode output branch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $env:RUNNER_TEMP 'crazybatto-safe-installer-output'
+          Set-Location $source
+          git init
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan safe-mod-installer-v0.3.3
+          git add --all
+          git commit -m "Safe Mode installer 0.3.3 for $env:GITHUB_SHA"
+          $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GITHUB_REPOSITORY).git"
+          git push --force $remote HEAD:safe-mod-installer-v0.3.3
