@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crazy Batto SOTF Death Counter</title>
+  <link rel="stylesheet" href="/overlay.css">
+</head>
+<body>
+  <main id="widget" class="widget" aria-live="polite">
+    <header class="header">
+      <div class="title-wrap">
+        <span class="skull" aria-hidden="true">☠</span>
+        <div>
+          <h1 id="title">SONS OF THE FOREST – TODESZÄHLER</h1>
+          <p id="summary">Warte auf die Lobby …</p>
+        </div>
+      </div>
+      <div id="connection" class="connection" title="Verbindung zur Mod"></div>
+    </header>
+
+    <section id="players" class="players"></section>
+    <section id="empty" class="empty">
+      <span>Mitspieler werden automatisch erfasst.</span>
+    </section>
+
+    <footer class="footer">
+      <span id="modeLabel">Tode dieser Sitzung</span>
+      <span class="brand">CRAZY_BATTO</span>
+    </footer>
+  </main>
+
+  <aside id="toast" class="toast" aria-live="assertive">
+    <span class="toast-icon">☠</span>
+    <div>
+      <strong id="toastName">Spieler</strong>
+      <span id="toastText">ist gestorben</span>
+    </div>
+  </aside>
+
+  <script src="/overlay.js"></script>
+</body>
+</html>

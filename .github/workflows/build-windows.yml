@@ -1,0 +1,68 @@
+name: Build CrazyBatto RedManager
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Verify bundled mod source archive
+        shell: powershell
+        run: |
+          $archive = 'src-tauri/resources/CrazyBatto.SotfDeathCounter-source.zip'
+          if (-not (Test-Path $archive)) { throw "Missing bundled mod archive: $archive" }
+          $temp = Join-Path $env:RUNNER_TEMP 'crazybatto-mod-source'
+          if (Test-Path $temp) { Remove-Item $temp -Recurse -Force }
+          Expand-Archive -Path $archive -DestinationPath $temp -Force
+          foreach ($required in @('CrazyBatto.SotfDeathCounter.csproj', 'manifest.json', 'CrazyBattoDeathCounterMod.cs')) {
+            if (-not (Test-Path (Join-Path $temp $required))) { throw "Archive is missing $required" }
+          }
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Svelte and TypeScript check
+        run: npm run check
+
+      - name: Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Build Tauri Windows bundles
+        run: npm run tauri -- build
+
+      - name: Upload Windows bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-Windows-${{ github.sha }}
+          path: src-tauri/target/release/bundle/**/*
+          if-no-files-found: error
+          retention-days: 14

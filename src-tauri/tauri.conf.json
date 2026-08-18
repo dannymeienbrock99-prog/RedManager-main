@@ -1,0 +1,135 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist",
+    "withGlobalTauri": false
+  },
+  "package": {
+    "productName": "CrazyBatto RedManager",
+    "version": "1.2.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "execute": true,
+        "open": "^(https?://.+|steam://rungameid/1326470)$",
+        "scope": [
+          {
+            "name": "dotnet-template-check",
+            "cmd": "dotnet",
+            "args": [
+              "new",
+              "sotfmod",
+              "-h"
+            ]
+          },
+          {
+            "name": "dotnet-install-template",
+            "cmd": "dotnet",
+            "args": [
+              "new",
+              "install",
+              "RedLoader.Templates"
+            ]
+          },
+          {
+            "name": "dotnet-create-project",
+            "cmd": "dotnet",
+            "args": [
+              "new",
+              "sotfmod",
+              "--name",
+              {
+                "validator": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+              },
+              "--gameDirPath",
+              {
+                "validator": "^.+$"
+              },
+              "--output",
+              {
+                "validator": "^.+$"
+              }
+            ]
+          },
+          {
+            "name": "dotnet-create-project-no-comments",
+            "cmd": "dotnet",
+            "args": [
+              "new",
+              "sotfmod",
+              "--name",
+              {
+                "validator": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+              },
+              "--gameDirPath",
+              {
+                "validator": "^.+$"
+              },
+              "--output",
+              {
+                "validator": "^.+$"
+              },
+              "--comments",
+              "false"
+            ]
+          },
+          {
+            "name": "open-explorer",
+            "cmd": "explorer",
+            "args": [
+              {
+                "validator": "^(?:[A-Za-z]:[\\\\/]|\\\\\\\\).+"
+              }
+            ]
+          }
+        ]
+      },
+      "fs": {
+        "all": true,
+        "scope": [
+          "**"
+        ]
+      },
+      "dialog": {
+        "all": true
+      },
+      "path": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "de.crazybatto.redmanager",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "resources": [
+        "resources/CrazyBatto.SotfDeathCounter-source.zip"
+      ]
+    },
+    "security": {
+      "csp": "default-src 'self' tauri: asset:; img-src 'self' asset: data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost https://api.github.com https://github.com https://*.githubusercontent.com https://*.sotf-mods.com https://sotf-mods.com;"
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "resizable": true,
+        "title": "CrazyBatto RedManager – Sons of the Forest",
+        "width": 1080,
+        "height": 760,
+        "minWidth": 700,
+        "minHeight": 580
+      }
+    ]
+  }
+}

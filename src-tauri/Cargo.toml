@@ -1,0 +1,32 @@
+[package]
+name = "crazybatto-redmanager"
+version = "1.2.0"
+description = "Sons of the Forest RedLoader installer, mod manager, and CrazyBatto tools."
+authors = ["Crazy_Batto", "Toni Macaroni (upstream RedManager)"]
+license = "Apache-2.0"
+repository = "https://github.com/dannymeienbrock99-prog/RedManager-main"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.4", features = [] }
+
+[dependencies]
+tauri = { version = "1.4", features = ["shell-open", "shell-execute", "path-all", "dialog-all", "fs-all"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zip = "0.5"
+tauri-plugin-upload = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+regex = "1"
+winreg = "0.11"
+
+[dependencies.windows]
+version = "0.33.0"
+features = [
+    "alloc",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+]
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

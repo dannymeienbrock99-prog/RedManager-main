@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>CrazyBatto.SotfDeathCounter</AssemblyName>
+    <RootNamespace>CrazyBatto.SotfDeathCounter</RootNamespace>
+    <Version>0.3.1</Version>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <GameDir Condition="'$(GameDir)' == '' and '$(SOTF_GAME_DIR)' != ''">$(SOTF_GAME_DIR)</GameDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Il2CppInterop.Common">
+      <HintPath>$(GameDir)\_RedLoader\net6\Il2CppInterop.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(GameDir)\_RedLoader\net6\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2Cppmscorlib">
+      <HintPath>$(GameDir)\_RedLoader\Game\Il2Cppmscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RedLoader">
+      <HintPath>$(GameDir)\_RedLoader\net6\RedLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SonsSdk">
+      <HintPath>$(GameDir)\_RedLoader\net6\SonsSdk.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sons">
+      <HintPath>$(GameDir)\_RedLoader\Game\Sons.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Endnight">
+      <HintPath>$(GameDir)\_RedLoader\Game\Endnight.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Sons.Multiplayer">
+      <HintPath>$(GameDir)\_RedLoader\Game\Sons.Multiplayer.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameDir)\_RedLoader\Game\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameDir)\_RedLoader\Game\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameDir)\_RedLoader\net6\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="bolt">
+      <HintPath>$(GameDir)\_RedLoader\Game\bolt.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Bolt.Unity">
+      <HintPath>$(GameDir)\_RedLoader\Game\Bolt.Unity.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="bolt.user">
+      <HintPath>$(GameDir)\_RedLoader\Game\bolt.user.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Overlay\overlay.html" />
+    <EmbeddedResource Include="Overlay\overlay.css" />
+    <EmbeddedResource Include="Overlay\overlay.js" />
+    <None Update="manifest.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="ValidateSotfGameDirectory" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(GameDir)' == ''"
+           Text="Set GameDir or SOTF_GAME_DIR to the Sons Of The Forest installation directory." />
+    <Error Condition="'$(GameDir)' != '' and !Exists('$(GameDir)\SonsOfTheForest.exe')"
+           Text="SonsOfTheForest.exe was not found in GameDir." />
+    <Error Condition="'$(GameDir)' != '' and !Exists('$(GameDir)\_RedLoader\net6\SonsSdk.dll')"
+           Text="SonsSdk.dll was not found. Install and start RedLoader once before building the mod." />
+  </Target>
+</Project>
