@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.user
+*.suo
+*.cache
+
+# IDE
+.vs/
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local settings and packages
+*.local.json
+*.nupkg
+packages/
+
+# Signing material must never be committed
+*.pfx
+*.p12
+*.snk
