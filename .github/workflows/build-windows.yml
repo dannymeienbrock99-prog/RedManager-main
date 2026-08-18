@@ -1,0 +1,92 @@
+name: Build Windows RedManager
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redmanager-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CONFIGURATION: Release
+
+jobs:
+  test-and-publish:
+    name: Test and publish win-x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: |
+            **/*.csproj
+
+      - name: Restore
+        run: dotnet restore RedManager.sln
+
+      - name: Build
+        run: dotnet build RedManager.sln --configuration $env:CONFIGURATION --no-restore
+
+      - name: Run security and compatibility tests
+        run: dotnet test tests/CrazyBatto.RedManager.Tests/CrazyBatto.RedManager.Tests.csproj --configuration $env:CONFIGURATION --no-build --logger "trx;LogFileName=redmanager-tests.trx"
+
+      - name: Publish self-contained portable app
+        run: >-
+          dotnet publish src/CrazyBatto.RedManager/CrazyBatto.RedManager.csproj
+          --configuration $env:CONFIGURATION
+          --runtime win-x64
+          --self-contained true
+          --no-build
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          --output artifacts/portable
+
+      - name: Create portable archive and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path artifacts/package -Force | Out-Null
+          Copy-Item README.md, LICENSE, THIRD_PARTY_NOTICES.md -Destination artifacts/portable
+          Compress-Archive -Path artifacts/portable/* -DestinationPath artifacts/package/CrazyBatto-RedManager-win-x64.zip -CompressionLevel Optimal -Force
+          $exe = Get-ChildItem artifacts/portable -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'Keine veröffentlichte EXE gefunden.' }
+          $checksums = @(
+            "$(Get-FileHash $exe.FullName -Algorithm SHA256 | Select-Object -ExpandProperty Hash)  $($exe.Name)",
+            "$(Get-FileHash artifacts/package/CrazyBatto-RedManager-win-x64.zip -Algorithm SHA256 | Select-Object -ExpandProperty Hash)  CrazyBatto-RedManager-win-x64.zip"
+          )
+          $checksums | Set-Content artifacts/package/SHA256SUMS.txt -Encoding utf8
+          Copy-Item $exe.FullName artifacts/package/CrazyBatto.RedManager.exe
+
+      - name: Upload portable Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-win-x64
+          path: artifacts/package/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-test-results
+          path: tests/CrazyBatto.RedManager.Tests/TestResults/*.trx
+          if-no-files-found: warn
+          retention-days: 14
