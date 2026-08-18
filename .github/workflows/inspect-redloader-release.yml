@@ -1,0 +1,74 @@
+name: Inspect official RedLoader release
+
+on:
+  push:
+    branches:
+      - sotf-death-counter-tauri-v1.2.0
+    paths:
+      - .github/workflows/inspect-redloader-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and inspect RedLoader 0.8.6
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'redloader-release-inspection'
+          if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+
+          $zip = Join-Path $work 'Redloader.zip'
+          $extract = Join-Path $work 'extracted'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/ToniMacaroni/RedLoader/releases/download/0.8.6/Redloader.zip' `
+            -OutFile $zip `
+            -UseBasicParsing
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+
+          $report = Join-Path $work 'redloader-files.txt'
+          "Official RedLoader release inspection" | Set-Content -LiteralPath $report -Encoding utf8
+          "Downloaded: $(Get-Date -AsUTC -Format o)" | Add-Content -LiteralPath $report -Encoding utf8
+          "Archive SHA256: $((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant())" | Add-Content -LiteralPath $report -Encoding utf8
+          "" | Add-Content -LiteralPath $report -Encoding utf8
+          Get-ChildItem -LiteralPath $extract -Recurse -File |
+            Sort-Object FullName |
+            ForEach-Object {
+              $relative = $_.FullName.Substring($extract.Length).TrimStart('\')
+              "$relative`t$($_.Length)" | Add-Content -LiteralPath $report -Encoding utf8
+            }
+
+          Copy-Item -LiteralPath $report -Destination (Join-Path $env:GITHUB_WORKSPACE 'redloader-files.txt') -Force
+
+      - name: Publish inspection branch
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = Join-Path $env:RUNNER_TEMP 'redloader-inspection-publish'
+          if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
+          New-Item -ItemType Directory -Path $publish -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'redloader-files.txt') -Destination $publish
+          Set-Content -LiteralPath (Join-Path $publish 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+          Set-Content -LiteralPath (Join-Path $publish 'source-commit.txt') -Value $env:GITHUB_SHA -Encoding ascii
+
+          Set-Location $publish
+          git init
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan redloader-release-inspection
+          git add --all
+          git commit -m "Inspect RedLoader 0.8.6 release"
+          $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GITHUB_REPOSITORY).git"
+          git push --force $remote HEAD:redloader-release-inspection
