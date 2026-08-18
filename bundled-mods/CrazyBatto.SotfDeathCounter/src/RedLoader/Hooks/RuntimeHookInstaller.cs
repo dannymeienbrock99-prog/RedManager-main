@@ -32,7 +32,7 @@ internal sealed class RuntimeHookInstaller
 
     private static RuntimeHookInstaller? _active;
 
-    private readonly Harmony _harmony = new("CrazyBatto.SotfDeathCounter.RuntimeHooks");
+    private readonly HarmonyLib.Harmony _harmony = new("CrazyBatto.SotfDeathCounter.RuntimeHooks");
     private readonly AutomaticPlayerDiscovery _discovery;
     private readonly Action<PlayerObservation, PlayerSignalKind, DateTime> _onSignal;
     private readonly Action<string> _log;
