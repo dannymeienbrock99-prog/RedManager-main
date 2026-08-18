@@ -1,0 +1,60 @@
+name: Export ready CrazyBatto RedManager package
+
+on:
+  push:
+    branches:
+      - sotf-death-counter-tauri-v1.2.0
+    paths:
+      - .github/workflows/export-ready-package.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout successful build output
+        uses: actions/checkout@v4
+        with:
+          ref: windows-build-output-v1.2.0
+          path: output
+          fetch-depth: 1
+
+      - name: Verify package and publish run identifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="output/CrazyBatto-RedManager-Windows-v1.2.0.zip"
+          checksum="output/SHA256SUMS.txt"
+
+          test -f "$package"
+          test -f "$checksum"
+
+          actual="$(sha256sum "$package" | awk '{print $1}')"
+          expected="$(awk '{print $1}' "$checksum" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$expected"
+
+          printf '%s\n' "${GITHUB_RUN_ID}" > output/export-run-id.txt
+          printf '%s\n' "${GITHUB_SHA}" > output/export-source-commit.txt
+
+          cd output
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add export-run-id.txt export-source-commit.txt
+          git commit -m "Record package export run ${GITHUB_RUN_ID}"
+          git push origin HEAD:windows-build-output-v1.2.0
+
+      - name: Upload ready Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-Windows-v1.2.0-ready
+          path: |
+            output/CrazyBatto-RedManager-Windows-v1.2.0.zip
+            output/SHA256SUMS.txt
+            output/build-status.json
+          if-no-files-found: error
+          retention-days: 30
