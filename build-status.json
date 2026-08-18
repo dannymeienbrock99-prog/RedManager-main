@@ -1,0 +1,10 @@
+﻿{
+    "success":  true,
+    "version":  "1.2.1",
+    "bundledModVersion":  "0.3.2",
+    "sourceBranch":  "sotf-death-counter-tauri-v1.2.0",
+    "sourceCommit":  "289ec89f1a8940f78c53ff269a5ceabd99af44f3",
+    "failedStage":  "",
+    "generatedAtUtc":  "2026-08-18T05:15:24.1837922Z",
+    "package":  "CrazyBatto-RedManager-Windows-v1.2.1.zip"
+}
