@@ -1,14 +1,235 @@
-name: Build CrazyBatto RedManager
+name: Build CrazyBatto RedManager 1.2.1
 
 on:
+  push:
+    branches:
+      - sotf-death-counter-tauri-v1.2.0
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  maintenance:
-    runs-on: ubuntu-latest
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+
     steps:
-      - name: Build temporarily paused
-        run: echo "Automatic build is paused while the SOTF death-counter fix is applied."
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup .NET 6 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Build, validate and package
+        id: build
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+
+          $reportDir = Join-Path $env:RUNNER_TEMP 'crazybatto-build-1.2.1'
+          if (Test-Path $reportDir) {
+            Remove-Item $reportDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+
+          $logPath = Join-Path $reportDir 'build.log'
+          $success = $true
+          $failedStage = ''
+
+          function Write-BuildLog {
+            param([string]$Message)
+            $line = "[$([DateTime]::UtcNow.ToString('u'))] $Message"
+            Write-Host $line
+            $line | Out-File -FilePath $logPath -Append -Encoding utf8
+          }
+
+          function Invoke-BuildStage {
+            param(
+              [string]$Name,
+              [string]$Executable,
+              [string[]]$Arguments
+            )
+
+            Write-BuildLog "START: $Name"
+            & $Executable @Arguments 2>&1 | Tee-Object -FilePath $logPath -Append
+            $exitCode = $LASTEXITCODE
+            Write-BuildLog "END: $Name (exit code $exitCode)"
+
+            if ($exitCode -ne 0) {
+              $script:success = $false
+              $script:failedStage = $Name
+            }
+          }
+
+          Write-BuildLog "CrazyBatto RedManager 1.2.1 Windows build for commit $env:GITHUB_SHA"
+
+          try {
+            $mainRs = 'src-tauri/src/main.rs'
+            $mainSource = Get-Content -LiteralPath $mainRs -Raw
+            $mainSource = $mainSource.Replace(
+              'const BUNDLED_MOD_VERSION: &str = "0.3.1";',
+              'const BUNDLED_MOD_VERSION: &str = "0.3.2";'
+            )
+            Set-Content -LiteralPath $mainRs -Value $mainSource -Encoding utf8
+            Write-BuildLog 'Embedded Death Counter version set to 0.3.2.'
+          }
+          catch {
+            $success = $false
+            $failedStage = 'Patch embedded mod version'
+            Write-BuildLog "ERROR: $($_.Exception.Message)"
+          }
+
+          if ($success) {
+            Invoke-BuildStage 'Create current bundled death-counter archive' 'powershell.exe' @(
+              '-NoProfile',
+              '-ExecutionPolicy', 'Bypass',
+              '-File', '.\tools\Create-BundledModArchive.ps1'
+            )
+          }
+
+          if ($success) {
+            Invoke-BuildStage 'Compile-test death-counter source' 'powershell.exe' @(
+              '-NoProfile',
+              '-ExecutionPolicy', 'Bypass',
+              '-File', '.\tools\Test-DeathCounterCompile.ps1'
+            )
+          }
+
+          if ($success) {
+            Invoke-BuildStage 'Install frontend dependencies' 'npm.cmd' @('ci')
+          }
+          if ($success) {
+            Invoke-BuildStage 'Svelte and TypeScript check' 'npm.cmd' @('run', 'check')
+          }
+          if ($success) {
+            Invoke-BuildStage 'Rust unit tests' 'cargo.exe' @('test', '--manifest-path', 'src-tauri/Cargo.toml')
+          }
+          if ($success) {
+            Invoke-BuildStage 'Build Tauri Windows bundles' 'npm.cmd' @('run', 'tauri', '--', 'build')
+          }
+
+          $bundleDir = 'src-tauri/target/release/bundle'
+          $zipPath = Join-Path $reportDir 'CrazyBatto-RedManager-Windows-v1.2.1.zip'
+          $shaPath = Join-Path $reportDir 'SHA256SUMS.txt'
+
+          if ($success) {
+            if (-not (Test-Path -LiteralPath $bundleDir -PathType Container)) {
+              $success = $false
+              $failedStage = 'Collect Windows bundles'
+              Write-BuildLog "ERROR: Bundle directory was not created: $bundleDir"
+            }
+            else {
+              $bundleFiles = Get-ChildItem -LiteralPath $bundleDir -Recurse -File
+              if (-not $bundleFiles) {
+                $success = $false
+                $failedStage = 'Collect Windows bundles'
+                Write-BuildLog 'ERROR: Bundle directory contains no files.'
+              }
+              else {
+                Compress-Archive -Path (Join-Path $bundleDir '*') -DestinationPath $zipPath -CompressionLevel Optimal -Force
+                $hash = Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
+                "$($hash.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($zipPath))" |
+                  Set-Content -LiteralPath $shaPath -Encoding utf8
+                Write-BuildLog "Created package: $zipPath"
+              }
+            }
+          }
+
+          $status = [ordered]@{
+            success = $success
+            version = '1.2.1'
+            bundledModVersion = '0.3.2'
+            sourceBranch = $env:GITHUB_REF_NAME
+            sourceCommit = $env:GITHUB_SHA
+            failedStage = $failedStage
+            generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+            package = if ($success) { 'CrazyBatto-RedManager-Windows-v1.2.1.zip' } else { $null }
+          }
+          $status |
+            ConvertTo-Json -Depth 5 |
+            Set-Content -LiteralPath (Join-Path $reportDir 'build-status.json') -Encoding utf8
+
+          Set-Content -LiteralPath (Join-Path $reportDir 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+          Set-Content -LiteralPath (Join-Path $reportDir 'source-commit.txt') -Value $env:GITHUB_SHA -Encoding ascii
+          "success=$($success.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-BuildLog "FINAL RESULT: $(if ($success) { 'SUCCESS' } else { 'FAILED' })"
+
+          exit 0
+
+      - name: Upload build package and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-Windows-v1.2.1-${{ github.sha }}
+          path: ${{ runner.temp }}/crazybatto-build-1.2.1/**/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish deterministic output branch
+        if: always()
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceDir = Join-Path $env:RUNNER_TEMP 'crazybatto-build-1.2.1'
+
+          if (-not (Test-Path -LiteralPath $sourceDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
+            [ordered]@{
+              success = $false
+              version = '1.2.1'
+              bundledModVersion = '0.3.2'
+              sourceBranch = $env:GITHUB_REF_NAME
+              sourceCommit = $env:GITHUB_SHA
+              failedStage = 'GitHub Actions setup or build step'
+              generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+              package = $null
+            } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sourceDir 'build-status.json') -Encoding utf8
+            Set-Content -LiteralPath (Join-Path $sourceDir 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+            Set-Content -LiteralPath (Join-Path $sourceDir 'source-commit.txt') -Value $env:GITHUB_SHA -Encoding ascii
+          }
+
+          $publishDir = Join-Path $env:RUNNER_TEMP 'crazybatto-publish-1.2.1'
+          if (Test-Path $publishDir) {
+            Remove-Item $publishDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
+          Copy-Item -Path (Join-Path $sourceDir '*') -Destination $publishDir -Recurse -Force
+
+          Set-Location -LiteralPath $publishDir
+          git init
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan windows-build-output-v1.2.1
+          git add --all
+          git commit -m "Windows build output 1.2.1 for $env:GITHUB_SHA"
+
+          $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GITHUB_REPOSITORY).git"
+          git push --force $remote HEAD:windows-build-output-v1.2.1
+
+      - name: Mark failed compilation
+        if: steps.build.outputs.success != 'true'
+        shell: powershell
+        run: |
+          Write-Error 'The Windows compilation failed. See build.log in the output branch.'
+          exit 1
