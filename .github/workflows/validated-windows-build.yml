@@ -1,0 +1,92 @@
+name: Validated Windows Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validated-redmanager-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: "**/*.csproj"
+
+      - name: Restore
+        run: dotnet restore RedManager.sln
+
+      - name: Build solution
+        run: dotnet build RedManager.sln -c Release --no-restore
+
+      - name: Test compatibility and extraction security
+        run: dotnet test tests/CrazyBatto.RedManager.Tests/CrazyBatto.RedManager.Tests.csproj -c Release --no-build --logger "trx;LogFileName=redmanager-tests.trx"
+
+      - name: Publish win-x64 application
+        run: >-
+          dotnet publish src/CrazyBatto.RedManager/CrazyBatto.RedManager.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o artifacts/portable
+
+      - name: Verify published executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem artifacts/portable -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'Publish produced no executable.' }
+          if ($exe.Length -lt 1MB) { throw 'Published executable is unexpectedly small.' }
+          Write-Host "Validated $($exe.FullName) ($($exe.Length) bytes)"
+
+      - name: Package artifact and SHA-256 checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item README.md, LICENSE, THIRD_PARTY_NOTICES.md -Destination artifacts/portable
+          New-Item -ItemType Directory -Path artifacts/package -Force | Out-Null
+          Compress-Archive artifacts/portable/* artifacts/package/CrazyBatto-RedManager-win-x64.zip -CompressionLevel Optimal -Force
+          $exe = Get-ChildItem artifacts/portable -Filter *.exe | Select-Object -First 1
+          Copy-Item $exe.FullName artifacts/package/CrazyBatto.RedManager.exe
+          @(
+            "$(Get-FileHash artifacts/package/CrazyBatto.RedManager.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash)  CrazyBatto.RedManager.exe",
+            "$(Get-FileHash artifacts/package/CrazyBatto-RedManager-win-x64.zip -Algorithm SHA256 | Select-Object -ExpandProperty Hash)  CrazyBatto-RedManager-win-x64.zip"
+          ) | Set-Content artifacts/package/SHA256SUMS.txt -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-validated-win-x64
+          path: artifacts/package/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-RedManager-validated-tests
+          path: tests/CrazyBatto.RedManager.Tests/TestResults/*.trx
+          if-no-files-found: warn
+          retention-days: 14
