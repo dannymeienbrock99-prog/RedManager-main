@@ -1,0 +1,200 @@
+name: Build precompiled SOTF Death Counter 0.3.2
+
+on:
+  push:
+    branches:
+      - sotf-death-counter-tauri-v1.2.0
+    paths:
+      - .github/workflows/build-precompiled-death-counter.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-mod:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 6 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '6.0.x'
+
+      - name: Build against official RedLoader SDK
+        id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $work = Join-Path $env:RUNNER_TEMP 'crazybatto-precompiled-mod'
+          $output = Join-Path $work 'output'
+          if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+          New-Item -ItemType Directory -Path $work, $output -Force | Out-Null
+
+          $log = Join-Path $output 'build.log'
+          $success = $true
+          $errorMessage = ''
+
+          try {
+            $releaseZip = Join-Path $work 'Redloader.zip'
+            $releaseDir = Join-Path $work 'Redloader'
+            Invoke-WebRequest `
+              -Uri 'https://github.com/ToniMacaroni/RedLoader/releases/download/0.8.6/Redloader.zip' `
+              -OutFile $releaseZip
+            Expand-Archive -LiteralPath $releaseZip -DestinationPath $releaseDir -Force
+
+            $net6 = Join-Path $releaseDir '_Redloader\net6'
+            foreach ($required in @('RedLoader.dll', 'SonsSdk.dll', '0Harmony.dll')) {
+              if (-not (Test-Path (Join-Path $net6 $required))) {
+                throw "Official RedLoader release is missing $required"
+              }
+            }
+
+            $fakeGame = Join-Path $work 'FakeGame'
+            $fakeUnity = Join-Path $fakeGame '_RedLoader\unity-libs'
+            $stubRoot = Join-Path $work 'UnityStubs'
+            New-Item -ItemType Directory -Path $fakeUnity, $stubRoot -Force | Out-Null
+            New-Item -ItemType File -Path (Join-Path $fakeGame 'SonsOfTheForest.exe') -Force | Out-Null
+
+            function Build-UnityStub {
+              param([string]$ProjectName, [string]$AssemblyName, [string]$Source)
+              $projectDir = Join-Path $stubRoot $ProjectName
+              New-Item -ItemType Directory -Path $projectDir -Force | Out-Null
+              @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>$AssemblyName</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyVersion>0.0.0.0</AssemblyVersion>
+    <FileVersion>0.0.0.0</FileVersion>
+  </PropertyGroup>
+</Project>
+"@ | Set-Content -LiteralPath (Join-Path $projectDir "$ProjectName.csproj") -Encoding utf8
+              $Source | Set-Content -LiteralPath (Join-Path $projectDir 'Stub.cs') -Encoding utf8
+              & dotnet build (Join-Path $projectDir "$ProjectName.csproj") -c Release --nologo --output (Join-Path $projectDir 'out') 2>&1 |
+                Tee-Object -FilePath $log -Append
+              if ($LASTEXITCODE -ne 0) { throw "Unity stub build failed: $ProjectName" }
+              Copy-Item (Join-Path $projectDir "out\$AssemblyName.dll") (Join-Path $fakeUnity "$AssemblyName.dll") -Force
+            }
+
+            Build-UnityStub -ProjectName 'UnityCoreStub' -AssemblyName 'UnityEngine.CoreModule' -Source @'
+namespace UnityEngine
+{
+    public class Object
+    {
+        public static T[] FindObjectsOfType<T>() where T : Object => System.Array.Empty<T>();
+        public string name { get; set; } = string.Empty;
+        public int GetInstanceID() => 0;
+    }
+
+    public class GameObject : Object { }
+
+    public class Component : Object
+    {
+        public Transform transform => null!;
+        public GameObject gameObject => null!;
+    }
+
+    public class MonoBehaviour : Component { }
+
+    public class Transform : Component
+    {
+        public Transform root => null!;
+        public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component => System.Array.Empty<T>();
+    }
+}
+'@
+
+            Build-UnityStub -ProjectName 'UnityFacadeStub' -AssemblyName 'UnityEngine' -Source @'
+namespace UnityEngine;
+public static class FacadePlaceholder { }
+'@
+
+            $modProject = Join-Path $env:GITHUB_WORKSPACE 'bundled-mods\CrazyBatto.SotfDeathCounter\CrazyBatto.SotfDeathCounter.csproj'
+            $modOutput = Join-Path $work 'mod-output'
+            & dotnet build $modProject -c Release --nologo --output $modOutput `
+              "-p:GameDir=$fakeGame" `
+              "-p:RedLoaderRoot=$(Join-Path $fakeGame '_RedLoader')" `
+              "-p:RedLoaderNet6Dir=$net6" `
+              "-p:UnityReferenceDir=$fakeUnity" 2>&1 |
+              Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "Death-counter compilation failed with exit code $LASTEXITCODE"
+            }
+
+            $dll = Join-Path $modOutput 'CrazyBatto.SotfDeathCounter.dll'
+            if (-not (Test-Path $dll)) { throw 'Compiled Death Counter DLL was not created.' }
+
+            Copy-Item -LiteralPath $dll -Destination $output -Force
+            if (Test-Path (Join-Path $modOutput 'CrazyBatto.SotfDeathCounter.pdb')) {
+              Copy-Item -LiteralPath (Join-Path $modOutput 'CrazyBatto.SotfDeathCounter.pdb') -Destination $output -Force
+            }
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'bundled-mods\CrazyBatto.SotfDeathCounter\manifest.json') -Destination $output -Force
+            (Get-FileHash -LiteralPath (Join-Path $output 'CrazyBatto.SotfDeathCounter.dll') -Algorithm SHA256).Hash.ToLowerInvariant() |
+              Set-Content -LiteralPath (Join-Path $output 'DLL-SHA256.txt') -Encoding ascii
+          }
+          catch {
+            $success = $false
+            $errorMessage = $_.Exception.Message
+            "ERROR: $errorMessage" | Add-Content -LiteralPath $log -Encoding utf8
+          }
+
+          [ordered]@{
+            success = $success
+            modVersion = '0.3.2'
+            redLoaderVersion = '0.8.6'
+            sourceCommit = $env:GITHUB_SHA
+            runId = $env:GITHUB_RUN_ID
+            error = $errorMessage
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'build-status.json') -Encoding utf8
+
+          "success=$($success.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          exit 0
+
+      - name: Upload precompiled mod and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyBatto-SOTF-DeathCounter-v0.3.2-precompiled
+          path: ${{ runner.temp }}/crazybatto-precompiled-mod/output/**/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish deterministic precompiled-mod branch
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $env:RUNNER_TEMP 'crazybatto-precompiled-mod\output'
+          if (-not (Test-Path $source)) {
+            New-Item -ItemType Directory -Path $source -Force | Out-Null
+            '{"success":false,"error":"output directory missing"}' |
+              Set-Content -LiteralPath (Join-Path $source 'build-status.json') -Encoding utf8
+          }
+          Set-Content -LiteralPath (Join-Path $source 'run-id.txt') -Value $env:GITHUB_RUN_ID -Encoding ascii
+
+          Set-Location $source
+          git init
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan precompiled-death-counter-v0.3.2
+          git add --all
+          git commit -m "Precompiled SOTF Death Counter 0.3.2 for $env:GITHUB_SHA"
+          $remote = "https://x-access-token:$($env:GH_TOKEN)@github.com/$($env:GITHUB_REPOSITORY).git"
+          git push --force $remote HEAD:precompiled-death-counter-v0.3.2
+
+      - name: Mark compilation failure
+        if: steps.build.outputs.success != 'true'
+        shell: pwsh
+        run: |
+          Write-Error 'Precompiled Death Counter build failed. See the output branch build.log.'
+          exit 1
