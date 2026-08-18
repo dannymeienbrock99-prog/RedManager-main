@@ -51,18 +51,39 @@ if (-not $GameDirectory -or -not (Test-Path (Join-Path $GameDirectory 'SonsOfThe
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw '.NET SDK was not found in PATH.'
 }
-if (-not ((dotnet --list-sdks) -match '^6\.')) {
-    throw '.NET 6 SDK is required to build this RedLoader mod.'
+$InstalledSdks = @(dotnet --list-sdks)
+if (-not $InstalledSdks) {
+    throw 'An installed .NET SDK is required to build this RedLoader mod.'
 }
-if (-not (Test-Path (Join-Path $GameDirectory '_RedLoader\net6\SonsSdk.dll'))) {
-    throw 'SonsSdk.dll is missing. Install RedLoader and start the game through RedLoader once.'
+
+$RedLoaderRoot = Join-Path $GameDirectory '_RedLoader'
+$RedLoaderNet6 = Join-Path $RedLoaderRoot 'net6'
+foreach ($required in @('SonsSdk.dll', 'RedLoader.dll', '0Harmony.dll')) {
+    if (-not (Test-Path (Join-Path $RedLoaderNet6 $required))) {
+        throw "$required is missing in $RedLoaderNet6. Install RedLoader and start the game once."
+    }
+}
+
+$UnityReferenceDirectory = @(
+    (Join-Path $RedLoaderRoot 'Game'),
+    (Join-Path $RedLoaderRoot 'unity-libs')
+) | Where-Object {
+    Test-Path (Join-Path $_ 'UnityEngine.CoreModule.dll')
+} | Select-Object -First 1
+
+if (-not $UnityReferenceDirectory) {
+    throw 'UnityEngine.CoreModule.dll is missing. Start Sons of the Forest once with RedLoader, wait for the main menu, close the game, and retry.'
 }
 
 $Output = Join-Path $env:TEMP 'CrazyBattoRedManager\DeathCounterManualBuild'
 if (Test-Path $Output) { Remove-Item $Output -Recurse -Force }
 New-Item -ItemType Directory -Path $Output -Force | Out-Null
 
-& dotnet build $Project --configuration Release --nologo --output $Output "-p:GameDir=$GameDirectory"
+& dotnet build $Project --configuration Release --nologo --output $Output `
+    "-p:GameDir=$GameDirectory" `
+    "-p:RedLoaderRoot=$RedLoaderRoot" `
+    "-p:RedLoaderNet6Dir=$RedLoaderNet6" `
+    "-p:UnityReferenceDir=$UnityReferenceDirectory"
 if ($LASTEXITCODE -ne 0) { throw "dotnet build failed with exit code $LASTEXITCODE" }
 
 $Mods = Join-Path $GameDirectory 'Mods'
