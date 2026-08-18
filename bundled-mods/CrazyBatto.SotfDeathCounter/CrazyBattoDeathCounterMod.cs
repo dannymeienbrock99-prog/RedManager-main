@@ -2,6 +2,7 @@ using CrazyBatto.SotfDeathCounter.Core;
 using CrazyBatto.SotfDeathCounter.LocalApi;
 using CrazyBatto.SotfDeathCounter.RedLoader;
 using SonsSdk;
+using SonsSdk.Attributes;
 
 namespace CrazyBatto.SotfDeathCounter;
 
