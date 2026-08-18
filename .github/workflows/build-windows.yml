@@ -2,7 +2,9 @@ name: Build CrazyBatto RedManager
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - sotf-death-counter-tauri-v1.2.0
   pull_request:
     branches: [main]
   workflow_dispatch:
